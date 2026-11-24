@@ -1,3 +1,4 @@
+import os
 import datetime
 import time
 import akshare as ak
@@ -8,14 +9,11 @@ import yfinance as yf
 def get_hk_connect_stocks():
     """透過 akshare 獲取最新港股通（滬港通+深港通）成份股名單與即時行情"""
     try:
-        # 獲取港股通即時行情（包含所有港股通標的）
         df_ggt = ak.stock_hk_ggt_components_em()
-        # 過濾掉停牌或成交額為0的股份，並按成交額排序（確保流動性，避免無效計算）
         df_ggt['成交額'] = pd.to_numeric(df_ggt['成交額'], errors='coerce').fillna(0)
         df_ggt['最新價'] = pd.to_numeric(df_ggt['最新價'], errors='coerce').fillna(0)
         df_ggt['漲跌幅'] = pd.to_numeric(df_ggt['漲跌幅'], errors='coerce').fillna(0)
         
-        # 篩選成交額大於 1,000 萬港幣的活躍港股通股份（約 300-400 隻，兼顧全面性與執行速度）
         active_df = df_ggt[(df_ggt['最新價'] > 0) & (df_ggt['成交額'] >= 10000000)].copy()
         active_df = active_df.sort_values(by='成交額', ascending=False)
         return active_df
@@ -24,8 +22,7 @@ def get_hk_connect_stocks():
         return pd.DataFrame()
 
 def analyze_chan_theory(code, name, current_price, change_pct, turnover_hkd):
-    """計算個股纏論結構（分型、中樞區間、均線支撐與買點訊號）"""
-    # 將 5 位數港股代碼（如 00700）轉為 yfinance 格式（0700.HK）
+    """計算個股纏論結構（分型、中樞區間與買點訊號）"""
     yf_ticker = f"{code[1:]}.HK" if code.startswith("0") else f"{code}.HK"
     
     try:
@@ -40,14 +37,10 @@ def analyze_chan_theory(code, name, current_price, change_pct, turnover_hkd):
         high = df['High'].values
         low = df['Low'].values
 
-        # 計算近 30 日中樞區間 (ZD / ZG)
         zs_zg = round(float(np.percentile(high[-30:], 70)), 2)
         zs_zd = round(float(np.percentile(low[-30:], 30)), 2)
         
-        # 檢查最近 3 根 K 線是否形成標準「底分型」且收盤站上分型頂部
         is_bottom_fractal = (low[-2] < low[-3]) and (low[-2] < low[-1]) and (close[-1] > high[-2])
-        
-        # 檢查近期是否出現底背馳跡象（價格創新低但跌勢放緩）
         min_20 = np.min(low[-20:-3])
         is_new_low_rebound = (low[-2] <= min_20) and (close[-1] > close[-2])
 
@@ -60,7 +53,6 @@ def analyze_chan_theory(code, name, current_price, change_pct, turnover_hkd):
             elif zs_zd <= current_price <= zs_zg:
                 signal = "✅ 二買/中樞震盪底分型"
 
-        # 只輸出有明確纏論買點訊號的港股通股份，避免網頁過長
         if signal:
             return {
                 "代號": f"{code}.HK",
@@ -93,12 +85,10 @@ def main():
         if res:
             results.append(res)
         
-        # 輕微延遲避免請求過快
         time.sleep(0.05)
 
     df_res = pd.DataFrame(results)
 
-    # 取得香港時間
     hk_tz = datetime.timezone(datetime.timedelta(hours=8))
     update_time = datetime.datetime.now(hk_tz).strftime("%Y-%m-%d %H:%M:%S")
     total_scanned = len(ggt_df)
@@ -140,7 +130,6 @@ def main():
 </body>
 </html>
 """
-   import os
     os.makedirs("public", exist_ok=True)
     with open("public/index.html", "w", encoding="utf-8") as f:
         f.write(html_content)
