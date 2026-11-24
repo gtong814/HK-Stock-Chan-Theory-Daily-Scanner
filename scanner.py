@@ -1,72 +1,71 @@
 import os
 import datetime
-import time
+import requests
 import akshare as ak
 import pandas as pd
 import numpy as np
 import yfinance as yf
 
-# 內建核心港股通精選池（當海外伺服器無法連接內地接口時的 100% 穩定備援，涵蓋南向資金最活躍標的）
-CORE_HK_CONNECT = {
-    "0700.HK": "騰訊控股", "9988.HK": "阿里巴巴-W", "3690.HK": "美團-W", "1810.HK": "小米集團-W",
-    "0981.HK": "中芯國際", "9660.HK": "地平線機器人-W", "1211.HK": "比亞迪股份", "2015.HK": "理想汽車-W",
-    "9868.HK": "小鵬汽車-W", "9866.HK": "蔚來-SW", "0175.HK": "吉利汽車", "2333.HK": "長城汽車",
-    "0388.HK": "香港交易所", "0005.HK": "匯豐控股", "1299.HK": "友邦保險", "2318.HK": "中國平安",
-    "2628.HK": "中國人壽", "3968.HK": "招商銀行", "0939.HK": "建設銀行", "1398.HK": "工商銀行",
-    "3988.HK": "中國銀行", "1288.HK": "農業銀行", "0883.HK": "中國海洋石油", "0857.HK": "中國石油股份",
-    "0386.HK": "中國石油化工", "1088.HK": "中國神華", "1898.HK": "中煤能源", "2899.HK": "紫金礦業",
-    "3993.HK": "洛陽鉬業", "1378.HK": "中國宏橋", "2600.HK": "中國鋁業", "1818.HK": "招金礦業",
-    "0941.HK": "中國移動", "0728.HK": "中國電信", "0762.HK": "中國聯通", "0788.HK": "中國鐵塔",
-    "1024.HK": "快手-W", "9618.HK": "京東集團-SW", "9999.HK": "網易-S", "9888.HK": "百度集團-SW",
-    "9626.HK": "嗶哩嗶哩-W", "9961.HK": "攜程集團-S", "2382.HK": "舜宇光學科技", "2018.HK": "瑞聲科技",
-    "0285.HK": "比亞迪電子", "0992.HK": "聯想集團", "1347.HK": "華虹半導體", "0268.HK": "金蝶國際",
-    "3888.HK": "金山軟件", "0020.HK": "商湯-W", "9880.HK": "優必選", "2432.HK": "越疆",
-    "2269.HK": "藥明生物", "2359.HK": "藥明康德", "6160.HK": "百濟神州", "1801.HK": "信達生物",
-    "9926.HK": "康方生物", "1093.HK": "石藥集團", "1177.HK": "中國生物製藥", "2252.HK": "微創機器人-B",
-    "2331.HK": "李寧", "2020.HK": "安踏體育", "9633.HK": "農夫山泉", "9992.HK": "泡泡瑪特",
-    "6862.HK": "海底撈", "0291.HK": "華潤啤酒", "2319.HK": "蒙牛乳業", "1929.HK": "周大福",
-    "1109.HK": "華潤置地", "0688.HK": "中國海外發展", "1997.HK": "九龍倉置業", "0016.HK": "新鴻基地產",
-    "1113.HK": "長實集團", "0001.HK": "長和", "0027.HK": "銀河娛樂", "1928.HK": "金沙中國有限公司",
-    "0916.HK": "龍源電力", "0836.HK": "華潤電力", "2380.HK": "中國電力", "1816.HK": "中廣核電力",
-    "0902.HK": "華能國際電力", "1072.HK": "東方電氣", "2727.HK": "上海電氣", "1766.HK": "中國中車",
-    "0390.HK": "中國中鐵", "1186.HK": "中國鐵建", "1800.HK": "中國交通建設", "1919.HK": "中遠海控",
-    "0316.HK": "東方海外國際", "2618.HK": "京東物流", "2057.HK": "中通快遞-W", "6618.HK": "京東健康",
-    "1833.HK": "平安好醫生", "0241.HK": "阿里健康", "6060.HK": "眾安在綫", "1359.HK": "中國信達",
-    "2800.HK": "盈富基金", "3033.HK": "南方恒生科技", "2828.HK": "恒生中國企業"
-}
-
-def get_hk_connect_list():
-    """優先嘗試從 akshare 獲取全市場港股通名單，若海外網路受阻則自動切換至核心港股通池"""
+def get_all_hk_connect_stocks():
+    """從新浪財經或騰訊財經接口抓取全市場約 500+ 隻港股通成份股名單（支援海外伺服器）"""
     stocks = {}
-    source_label = "全市場港股通動態名單"
     
-    # 嘗試方法 1：akshare 東方財富港股通
+    # 來源 1：新浪財經港股通成份股（通常包含 500+ 隻全部港股通標的）
     try:
-        df_ggt = ak.stock_hk_ggt_components_em()
-        if df_ggt is not None and not df_ggt.empty:
-            for _, row in df_ggt.iterrows():
-                code = str(row['代碼']).zfill(5)
+        df_sina = ak.stock_hk_ggt_components_sina()
+        if df_sina is not None and not df_sina.empty:
+            for _, row in df_sina.iterrows():
+                code = str(row['symbol']).strip().zfill(5)
+                name = str(row['name']).strip()
                 yf_code = f"{code[1:]}.HK" if code.startswith("0") else f"{code}.HK"
-                stocks[yf_code] = str(row['名稱'])
-            if len(stocks) > 50:
-                print(f"成功從 akshare 獲取 {len(stocks)} 隻港股通股份")
-                return stocks, source_label
+                stocks[yf_code] = name
+            if len(stocks) > 400:
+                print(f"成功從新浪財經獲取全市場港股通名單：共 {len(stocks)} 隻")
+                return stocks, "全市場港股通股份"
     except Exception as e:
-        print(f"東方財富接口連接超時 ({e})，切換備援方案...")
+        print(f"新浪接口嘗試失敗: {e}")
 
-    # 嘗試方法 2：使用內建核心港股通名單（100% 穩定）
-    print(f"啟用內建核心港股通精選名單（共 {len(CORE_HK_CONNECT)} 隻活躍標的）")
-    return CORE_HK_CONNECT, "核心港股通精選池"
-
-def analyze_chan_theory(ticker, name):
-    """透過 yfinance 計算日線成交額與纏論結構（分型、中樞區間、買點訊號）"""
+    # 來源 2：新浪港股通分頁 API 直接抓取（備援確保抓滿 500+ 隻）
     try:
-        df = yf.download(ticker, period="6mo", interval="1d", progress=False)
-        if df.empty or len(df) < 35:
-            return None
+        headers = {"User-Agent": "Mozilla/5.0"}
+        for page in range(1, 10):
+            url = f"http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHKStockData?page={page}&num=80&sort=symbol&asc=1&node=hgt_hk"
+            resp = requests.get(url, headers=headers, timeout=10)
+            data = resp.json()
+            if not data:
+                break
+            for item in data:
+                code = str(item['symbol']).strip().zfill(5)
+                name = str(item['name']).strip()
+                yf_code = f"{code[1:]}.HK" if code.startswith("0") else f"{code}.HK"
+                stocks[yf_code] = name
+        if len(stocks) > 400:
+            print(f"成功從新浪 API 獲取全市場港股通名單：共 {len(stocks)} 隻")
+            return stocks, "全市場港股通股份"
+    except Exception as e:
+        print(f"新浪 API 備援失敗: {e}")
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+    # 來源 3：東方財富接口
+    try:
+        df_em = ak.stock_hk_ggt_components_em()
+        if df_em is not None and not df_em.empty:
+            for _, row in df_em.iterrows():
+                code = str(row['代碼']).strip().zfill(5)
+                yf_code = f"{code[1:]}.HK" if code.startswith("0") else f"{code}.HK"
+                stocks[yf_code] = str(row['名稱']).strip()
+            if len(stocks) > 400:
+                return stocks, "全市場港股通股份"
+    except Exception:
+        pass
+
+    return stocks, "港股通股份"
+
+def analyze_single_df(ticker, name, df):
+    """計算單隻股票的纏論結構（分型、中樞區間與買點訊號）"""
+    try:
+        df = df.dropna(subset=['Close', 'High', 'Low', 'Volume'])
+        if len(df) < 35:
+            return None
 
         close = df['Close'].values
         high = df['High'].values
@@ -81,7 +80,7 @@ def analyze_chan_theory(ticker, name):
         change_pct = (current_price - prev_price) / prev_price * 100
         turnover_hkd = current_price * float(volume[-1])
 
-        # 過濾掉成交額低於 1,000 萬港幣的冷門股
+        # 過濾掉成交額低於 1,000 萬港幣的極低流動性股份
         if turnover_hkd < 10000000:
             return None
 
@@ -122,20 +121,29 @@ def analyze_chan_theory(ticker, name):
         return None
 
 def main():
-    stock_dict, source_label = get_hk_connect_list()
-    
+    stock_dict, source_label = get_all_hk_connect_stocks()
+    tickers_list = list(stock_dict.keys())
+    total_list_count = len(tickers_list)
+    print(f"準備批量下載 {total_list_count} 隻港股通股份的歷史 K 線...")
+
     results = []
-    scanned_count = 0
-    for ticker, name in stock_dict.items():
-        scanned_count += 1
-        res = analyze_chan_theory(ticker, name)
-        if res:
-            results.append(res)
-        time.sleep(0.05)
+    # 分批（每批 150 隻）批量下載，速度極快且穩定
+    batch_size = 150
+    for i in range(0, total_list_count, batch_size):
+        batch_tickers = tickers_list[i:i + batch_size]
+        try:
+            data = yf.download(batch_tickers, period="6mo", interval="1d", group_by="ticker", progress=False, threads=True)
+            for ticker in batch_tickers:
+                if ticker in data.columns.get_level_values(0):
+                    df_ticker = data[ticker]
+                    res = analyze_single_df(ticker, stock_dict[ticker], df_ticker)
+                    if res:
+                        results.append(res)
+        except Exception as e:
+            print(f"批次 {i} 下載異常: {e}")
 
     df_res = pd.DataFrame(results)
     if not df_res.empty:
-        # 按當日成交額由高至低排序
         df_res = df_res.sort_values(by="_turnover", ascending=False).drop(columns=["_turnover"])
 
     hk_tz = datetime.timezone(datetime.timedelta(hours=8))
@@ -145,7 +153,7 @@ def main():
     if not df_res.empty:
         table_html = df_res.to_html(index=False, border=0, classes="stock-table")
     else:
-        table_html = "<p style='text-align:center; padding: 30px; color: #aaa;'>今日港股通股份中暫無符合纏論底分型買點條件的標的。</p>"
+        table_html = "<p style='text-align:center; padding: 30px; color: #aaa;'>今日全市場港股通股份中暫無符合纏論底分型買點條件的標的。</p>"
 
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -169,7 +177,7 @@ def main():
     <div class="container">
         <h1>港股通纏論每日買點掃描 (Chan Theory Scanner)</h1>
         <div class="meta">
-            掃描範圍：{source_label} ({scanned_count} 隻) ｜ 
+            掃描範圍：{source_label} ({total_list_count} 隻) ｜ 
             符合條件：<span class="badge">{matched_count} 隻</span> ｜ 
             更新時間：{update_time} (HKT)
         </div>
@@ -181,7 +189,7 @@ def main():
     os.makedirs("public", exist_ok=True)
     with open("public/index.html", "w", encoding="utf-8") as f:
         f.write(html_content)
-    print(f"掃描完成！共掃描 {scanned_count} 隻，篩選出 {matched_count} 隻符合條件的港股通股份。")
+    print(f"掃描完成！共掃描 {total_list_count} 隻，篩選出 {matched_count} 隻符合條件的港股通股份。")
 
 if __name__ == "__main__":
     main()
