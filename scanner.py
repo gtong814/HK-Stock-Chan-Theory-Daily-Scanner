@@ -140,7 +140,9 @@ def main():
 </body>
 </html>
 """
-    with open("index.html", "w", encoding="utf-8") as f:
+   import os
+    os.makedirs("public", exist_ok=True)
+    with open("public/index.html", "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"掃描完成！共篩選出 {matched_count} 隻符合條件的港股通股份。")
 
